@@ -89,6 +89,7 @@ def logout(response: Response, request: Request):
         "auth.logout ip=%s",
         request.client.host if request.client else "unknown",
     )
+    response.status_code = status.HTTP_204_NO_CONTENT
     response.delete_cookie(SESSION_COOKIE_NAME)
     return response
 

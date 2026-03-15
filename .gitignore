@@ -342,6 +342,7 @@ paket-files/
 # Python Tools for Visual Studio (PTVS)
 **/__pycache__/
 *.pyc
+*.tsbuildinfo
 
 # Cake - Uncomment if you are using it
 #tools/**
@@ -426,5 +427,6 @@ backend/logs/
 backend/story_writers.db
 backend/story_writers.db-shm
 backend/story_writers.db-wal
+backend/tests/.runtime/
 coverage/
 .pytest_cache/
