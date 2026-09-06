@@ -15,9 +15,12 @@ from asg_top_down.schemas import (
     CharactersArtifact,
     EventDependency,
     Location,
+    NarrativeBlueprintDraft,
     PlanReview,
     PlotEvent,
     RevisionNote,
+    SemanticSkeletonRanking,
+    SemanticSkeletonScore,
     StoryPlanDraft,
     StoryPresentation,
     StoryRequest,
@@ -235,6 +238,8 @@ class FakeProvider:
         writer_outputs: list[str] | None = None,
         analyzed_request: StoryRequest | None = None,
         quota_error_at: str | None = None,
+        fail_semantic_ranking=False,
+        fail_architect=False,
     ) -> None:
         self.plans = list(plans or [valid_plan()])
         self.fail_quality = fail_quality
@@ -245,6 +250,8 @@ class FakeProvider:
         self.fail_writer_call = fail_writer_call
         self.writer_outputs = list(writer_outputs) if writer_outputs is not None else None
         self.analyzed_request = analyzed_request or make_request()
+        self.fail_semantic_ranking = fail_semantic_ranking
+        self.fail_architect = fail_architect
         self.usage_records = []
         self.usage_callback = None
         self.wait_callback = None
@@ -281,7 +288,29 @@ class FakeProvider:
             return self.story_review
         if schema is StoryRequest:
             return self.analyzed_request
+        if schema in (SemanticSkeletonRanking, NarrativeBlueprintDraft):
+            return self._architecture_response(schema)
         raise AssertionError(schema)
+
+    def _architecture_response(self, schema):
+        if schema is SemanticSkeletonRanking:
+            if self.fail_semantic_ranking:
+                raise RuntimeError("semantic ranking unavailable")
+            if self.quota_error_at == "semantic_ranking":
+                raise GeminiDailyQuotaError("daily quota exhausted")
+            return SemanticSkeletonRanking(
+                scores=[SemanticSkeletonScore(skeleton_id="heist", relevance=0.9)]
+            )
+        if self.fail_architect:
+            raise RuntimeError("architect unavailable")
+        if self.quota_error_at == "architect":
+            raise GeminiDailyQuotaError("daily quota exhausted")
+        return NarrativeBlueprintDraft(
+            macroplot_id="mystery",
+            macroplot_reading="Ana reconstructs a truth someone buried.",
+            subplot_ids=["confession"],
+            unexpected_angle="The truth is already known and nobody acts on it.",
+        )
 
     def generate_text(self, *, system_instruction, prompt, profile):
         self.text_calls.append((system_instruction, prompt))
@@ -756,3 +785,83 @@ def test_final_chapter_parser_requires_every_heading() -> None:
     story = "# Título\n\n## Uno\n\nPrimero.\n\n## Dos\n\nSegundo."
     assert parse_chapter_bodies(story, 2) == ["Primero.", "Segundo."]
     assert parse_chapter_bodies(story, 3) == []
+
+
+def structured_prompt(provider, schema_name: str) -> str:
+    return next(prompt for name, _, prompt in provider.structured_calls if name == schema_name)
+
+
+def test_architecture_stage_writes_a_blueprint_and_guides_later_agents(tmp_path) -> None:
+    provider = FakeProvider()
+    run = StoryGenerator(provider, tmp_path).generate(make_request())
+
+    blueprint = json.loads((run.run_dir / "narrative_blueprint.json").read_text(encoding="utf-8"))
+    assert blueprint["macroplot_id"] == "mystery"
+    assert blueprint["unexpected_angle"]
+    assert blueprint["semantic_used"] is True
+    assert blueprint["considered"], "the ranking evidence must be auditable"
+
+    metadata = json.loads((run.run_dir / "metadata.json").read_text(encoding="utf-8"))
+    completed = metadata["completed_stages"]
+    assert "architecture" in completed
+    assert completed == sorted(completed, key=pipeline_module.CHECKPOINT_STAGES.index)
+    assert completed.index("architecture") < completed.index("characters")
+
+    for schema_name in ("CharactersArtifact", "StoryPlanDraft"):
+        prompt = structured_prompt(provider, schema_name)
+        assert "NARRATIVE INSPIRATION (non-binding)" in prompt
+        assert "You may honour, subvert, or discard this section entirely." in prompt
+
+    architect_prompt = structured_prompt(provider, "NarrativeBlueprintDraft")
+    assert "SKELETON SHORTLIST" in architect_prompt
+    assert "FUNCTIONAL ROLE VOCABULARY" in architect_prompt
+
+
+def test_guidance_never_reaches_the_prose_and_critic_agents(tmp_path) -> None:
+    provider = FakeProvider()
+    StoryGenerator(provider, tmp_path).generate(make_request())
+    for _, prompt in provider.text_calls:
+        assert "NARRATIVE INSPIRATION" not in prompt
+    for name, _, prompt in provider.structured_calls:
+        if name in {"PlanReview", "StoryReview"}:
+            assert "NARRATIVE INSPIRATION" not in prompt
+
+
+def test_disabled_guidance_skips_the_stage_and_every_prompt(tmp_path) -> None:
+    provider = FakeProvider()
+    run = StoryGenerator(provider, tmp_path, narrative_guidance=False).generate(make_request())
+
+    assert not (run.run_dir / "narrative_blueprint.json").exists()
+    metadata = json.loads((run.run_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert "architecture" not in metadata["completed_stages"]
+    assert not metadata["warnings"]
+    assert all(name != "NarrativeBlueprintDraft" for name, _, _ in provider.structured_calls)
+    for _, _, prompt in provider.structured_calls:
+        assert "NARRATIVE INSPIRATION" not in prompt
+
+
+def test_architect_failure_only_costs_the_guidance(tmp_path) -> None:
+    provider = FakeProvider(fail_architect=True)
+    run = StoryGenerator(provider, tmp_path).generate(make_request())
+
+    assert run.story_path.is_file()
+    assert not (run.run_dir / "narrative_blueprint.json").exists()
+    metadata = json.loads((run.run_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert "architecture" not in metadata["completed_stages"]
+    assert any("esqueleto narrativo" in warning for warning in metadata["warnings"])
+    assert "NARRATIVE INSPIRATION" not in structured_prompt(provider, "StoryPlanDraft")
+
+
+def test_semantic_ranking_failure_still_produces_a_blueprint(tmp_path) -> None:
+    provider = FakeProvider(fail_semantic_ranking=True)
+    run = StoryGenerator(provider, tmp_path).generate(make_request())
+
+    blueprint = json.loads((run.run_dir / "narrative_blueprint.json").read_text(encoding="utf-8"))
+    assert blueprint["semantic_used"] is False
+    assert all(row["semantic_score"] is None for row in blueprint["considered"])
+
+
+def test_architect_quota_error_aborts_the_run(tmp_path) -> None:
+    provider = FakeProvider(quota_error_at="architect")
+    with pytest.raises(GeminiDailyQuotaError):
+        StoryGenerator(provider, tmp_path).generate(make_request())

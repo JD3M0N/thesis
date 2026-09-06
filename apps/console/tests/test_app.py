@@ -80,6 +80,7 @@ def test_top_down_passes_prompt_to_orchestrator(tmp_path, monkeypatch) -> None:
             "max_retries": 4,
             "max_retry_delay": 30,
             "request_timeout_ms": 45000,
+            "narrative_guidance": True,
         },
     )()
     monkeypatch.setattr(top_down_module, "load_top_down_settings", lambda: settings)
@@ -92,7 +93,7 @@ def test_top_down_passes_prompt_to_orchestrator(tmp_path, monkeypatch) -> None:
     menu.run()
     assert captured["prompt"] == "Una historia"
     assert captured["provider_options"]["max_retries"] == 4
-    assert captured["generator_options"] == {}
+    assert captured["generator_options"] == {"narrative_guidance": True}
 
 
 def test_normal_bottom_up_uses_selected_options(tmp_path, maps_dir, monkeypatch) -> None:

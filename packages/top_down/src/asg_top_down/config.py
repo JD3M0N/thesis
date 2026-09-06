@@ -23,6 +23,7 @@ class Settings:
     max_retries: int = 3
     max_retry_delay: int = 120
     request_timeout_ms: int = 120_000
+    narrative_guidance: bool = True
 
 
 def _integer(name: str, default: int, *, minimum: int = 0) -> int:
@@ -34,6 +35,14 @@ def _integer(name: str, default: int, *, minimum: int = 0) -> int:
     if value < minimum:
         raise ConfigurationError(f"{name} debe ser al menos {minimum}.")
     return value
+
+
+def _flag(name: str, *, default: bool) -> bool:
+    """Read a boolean environment switch, treating unset values as the default."""
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().casefold() in {"1", "true", "yes", "on"}
 
 
 def load_settings(start: Path | None = None) -> Settings:
@@ -53,4 +62,5 @@ def load_settings(start: Path | None = None) -> Settings:
         max_retries=_integer("GEMINI_MAX_RETRIES", 3),
         max_retry_delay=_integer("GEMINI_MAX_RETRY_DELAY", 120, minimum=1),
         request_timeout_ms=_integer("GEMINI_REQUEST_TIMEOUT_MS", 120_000, minimum=5_000),
+        narrative_guidance=_flag("ASG_NARRATIVE_GUIDANCE", default=True),
     )

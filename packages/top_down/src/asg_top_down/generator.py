@@ -58,10 +58,13 @@ class StoryGenerator:
         self,
         provider,
         output_root: Path,
+        *,
+        narrative_guidance: bool = True,
     ) -> None:
         """Configure a generator with its provider and output directory."""
         self.provider = provider
         self.output_root = Path(output_root)
+        self.narrative_guidance = narrative_guidance
 
     def generate(
         self,
@@ -77,5 +80,6 @@ class StoryGenerator:
             on_progress=on_progress,
             on_run_created=on_run_created,
             on_event=on_event,
+            narrative_guidance=self.narrative_guidance,
         )
         return StoryRun(pipeline.execute(request))

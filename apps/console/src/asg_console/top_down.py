@@ -44,6 +44,7 @@ class TopDownMenu:
         generator = StoryGenerator(
             provider,
             settings.output_root,
+            narrative_guidance=settings.narrative_guidance,
         )
         if "on_progress" in inspect.signature(generator.run).parameters:
 

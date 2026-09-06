@@ -1,5 +1,25 @@
 # Historial de cambios
 
+## 6.2.0
+
+- Anadida una biblioteca de 34 esqueletos de trama etiquetados por capa
+  (macrotrama y subtrama), definidos por objetivo y transformacion del mundo, con
+  preguntas de presion abiertas en vez de listas cerradas de beats.
+- Anadido un vocabulario de roles de personaje en dos capas: rol funcional
+  (Propp y Greimas) y persona superficial abierta; `CharacterProfile` gana los
+  campos opcionales `functional_role` y `persona`.
+- Anadida la etapa `architecture`, que escribe `narrative_blueprint.json` con la
+  lectura estructural de la premisa y el ranking que la justifica.
+- El emparejamiento combina puntuacion lexica TF-IDF local con una llamada
+  semantica, mezcladas 70/30, y degrada a solo lexico si el proveedor falla.
+- La guia se inyecta como texto explicitamente no vinculante solo en el
+  disenador de personajes y el planificador; ninguna validacion penaliza
+  desviarse de ella.
+- Anadido el interruptor `ASG_NARRATIVE_GUIDANCE` para la ablacion con y sin
+  guia; apagado, los prompts quedan identicos a la linea base.
+- Mantenido el contrato de artefactos 6.0: `narrative_blueprint.json` es
+  adicional y opcional, y las ejecuciones anteriores siguen siendo legibles.
+
 ## 6.1.0
 
 - Conservado el perfil Esencial sin un mínimo adicional de eventos.

@@ -53,6 +53,7 @@ class TopDownGenerator:
             StoryGenerator(
                 provider,
                 settings.output_root,
+                narrative_guidance=settings.narrative_guidance,
             )
             .run(
                 prompt,

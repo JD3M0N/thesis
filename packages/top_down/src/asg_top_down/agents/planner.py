@@ -2,6 +2,7 @@
 
 from ..schemas import (
     CharactersArtifact,
+    NarrativeBlueprint,
     PlanReview,
     StoryPlanDraft,
     StoryRequest,
@@ -22,6 +23,7 @@ class PlotPlannerAgent(Agent[StoryPlanDraft]):
         characters: CharactersArtifact,
         repair_feedback: str = "",
         plan_review: PlanReview | None = None,
+        blueprint: NarrativeBlueprint | None = None,
     ) -> StoryPlanDraft:
         """Run the PlotPlannerAgent workflow."""
         return self.provider.generate_structured(
@@ -45,7 +47,7 @@ class PlotPlannerAgent(Agent[StoryPlanDraft]):
                 "must be in English. Use only the fields defined by the response schema."
             ),
             prompt=(
-                f"{story_specification_header(request)}"
+                f"{story_specification_header(request, blueprint)}"
                 f"\n\nWORLD:\n{json_text(world)}"
                 f"\n\nCHARACTERS:\n{json_text(characters)}"
                 f"\n\nPLAN REVIEW TO APPLY:\n{json_text(plan_review) if plan_review else 'none'}"

@@ -47,7 +47,11 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         settings = load_settings()
         provider = provider_from_settings(settings)
-        generator = StoryGenerator(provider, settings.output_root)
+        generator = StoryGenerator(
+            provider,
+            settings.output_root,
+            narrative_guidance=settings.narrative_guidance,
+        )
 
         def report_progress(update) -> None:
             """Print one formatted pipeline progress update."""

@@ -30,6 +30,7 @@ def test_settings_are_reduced_to_runtime_generation_values(tmp_path, monkeypatch
         "max_retries",
         "max_retry_delay",
         "request_timeout_ms",
+        "narrative_guidance",
     }
 
 

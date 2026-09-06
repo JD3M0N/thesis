@@ -88,7 +88,16 @@ trabajo): 186 pruebas (184 pasan, 2 omitidas), `ruff check .`, `ruff format --ch
   mismos prompts, historias con y sin guía taxonómica y medir el efecto en originalidad,
   coherencia y satisfacción. **Cierre:** el experimento y la decisión quedan documentados; si hay
   mejora, se añade como brief opcional y auditable sin resucitar la complejidad del subsistema
-  anterior.
+  anterior. **Evidencia:** el mecanismo ya está construido y es auditable
+  (`packages/top_down/src/asg_top_down/skeletons.py` con 34 esqueletos etiquetados por capa,
+  `skeleton_match.py` con ranking léxico TF-IDF mezclado 0.70/0.30 con una llamada semántica,
+  y la etapa `architecture` que escribe `narrative_blueprint.json` por run). La guía se inyecta
+  como texto explícitamente no vinculante solo en el diseñador de personajes y el planificador;
+  no hay validación que penalice desviarse. Falta **únicamente el experimento**: ejecutar los
+  mismos prompts con `ASG_NARRATIVE_GUIDANCE=true` y `=false` y documentar la decisión aquí.
+  Cuando la guía está apagada no se escribe artefacto, `architecture` no aparece en
+  `completed_stages` y los prompts quedan idénticos a la línea base, que es la señal de
+  auditoría del experimento.
 
 - [ ] **`P2` Evaluar un grafo explícito de lugares antes de complicar el estado espacial.**
   Comparar el modelo actual (`locations`/`location_id`) contra relaciones y transiciones

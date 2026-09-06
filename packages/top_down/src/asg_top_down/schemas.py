@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from .profiles import NarrativeProfile
 from .version import GENERATOR_NAME, GENERATOR_VERSION, PIPELINE_VERSION
@@ -32,6 +32,55 @@ class StoryRequest(BaseModel):
     def agent_spec(self) -> dict:
         """Return trusted downstream data without replaying the raw prompt."""
         return self.model_dump(mode="json", exclude={"original_prompt"})
+
+
+class SkeletonMatch(BaseModel):
+    """Auditable relevance score for one plot skeleton against a story request."""
+
+    skeleton_id: str = Field(pattern=ID_PATTERN)
+    score: float = Field(ge=0, le=1)
+    lexical_score: float = Field(ge=0, le=1)
+    semantic_score: float | None = Field(default=None, ge=0, le=1)
+    matched_terms: list[str] = Field(default_factory=list)
+    catalog_order: int = Field(ge=0)
+
+
+class SemanticSkeletonScore(BaseModel):
+    """One model-assigned relevance value for a single plot skeleton."""
+
+    skeleton_id: str
+    relevance: float = Field(ge=0, le=1)
+
+
+class SemanticSkeletonRanking(BaseModel):
+    """Model-side half of the hybrid skeleton ranking."""
+
+    scores: list[SemanticSkeletonScore] = Field(default_factory=list)
+
+
+class RoleSuggestion(BaseModel):
+    """One optional pairing of narrative function and surface persona for a character."""
+
+    functional_role: str = Field(min_length=1)
+    persona: str = ""
+    sketch: str = Field(min_length=1)
+
+
+class NarrativeBlueprintDraft(BaseModel):
+    """Structural reading of a premise, proposed before the world and cast exist."""
+
+    macroplot_id: str = Field(min_length=1)
+    macroplot_reading: str = Field(min_length=1)
+    subplot_ids: list[str] = Field(default_factory=list, max_length=3)
+    role_suggestions: list[RoleSuggestion] = Field(default_factory=list)
+    unexpected_angle: str = Field(min_length=1)
+
+
+class NarrativeBlueprint(NarrativeBlueprintDraft):
+    """One blueprint plus the ranking evidence that produced it."""
+
+    considered: list[SkeletonMatch] = Field(default_factory=list)
+    semantic_used: bool = False
 
 
 class Location(BaseModel):
@@ -83,6 +132,22 @@ class CharacterProfile(BaseModel):
     conflict: str
     arc: str
     voice: str
+    functional_role: str = ""
+    persona: str = ""
+
+    @field_validator("functional_role", "persona", mode="before")
+    @classmethod
+    def normalize_optional_label(cls, value: object, info: ValidationInfo) -> str:
+        """Normalize optional role vocabulary and blank values outside the catalog."""
+        if not isinstance(value, str):
+            return ""
+        normalized = value.strip().casefold().replace(" ", "_").replace("-", "_")
+        if info.field_name == "functional_role" and normalized:
+            from .skeletons import FunctionalRole
+
+            if normalized not in {role.value for role in FunctionalRole}:
+                return ""
+        return normalized
 
 
 class CharacterRelationship(BaseModel):

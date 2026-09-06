@@ -17,6 +17,7 @@ from .agents import (
     DramaCriticAgent,
     PlanCriticAgent,
     PlotPlannerAgent,
+    StoryArchitectAgent,
     WorldBuilderAgent,
     WriterAgent,
 )
@@ -37,6 +38,7 @@ from .schemas import (
     ChapterRevisionResult,
     CharactersArtifact,
     LLMUsageArtifact,
+    NarrativeBlueprint,
     PlotEvent,
     RevisionNote,
     RevisionReport,
@@ -56,6 +58,7 @@ T = TypeVar("T")
 # pair below; "rate_limit" is intentionally excluded (see _notify).
 CHECKPOINT_STAGES = (
     "analysis",
+    "architecture",
     "world",
     "characters",
     "planning",
@@ -88,10 +91,12 @@ class StoryPipeline:
         on_progress: ProgressCallback | None = None,
         on_run_created: Callable[[Path], None] | None = None,
         on_event: PipelineEventCallback | None = None,
+        narrative_guidance: bool = True,
     ) -> None:
         """Store pipeline dependencies and optional lifecycle callbacks."""
         self.provider = provider
         self.output_root = Path(output_root)
+        self.narrative_guidance = narrative_guidance
         self.on_progress = on_progress
         self.on_run_created = on_run_created
         self.on_event = on_event
@@ -107,9 +112,10 @@ class StoryPipeline:
         self._configure_provider_callbacks()
         try:
             self._save_request(request)
+            blueprint = self._build_blueprint(request)
             world = self._build_world(request)
-            characters = self._build_characters(request, world)
-            plan = self._build_plan(request, world, characters)
+            characters = self._build_characters(request, world, blueprint)
+            plan = self._build_plan(request, world, characters, blueprint)
             presentation, draft_bodies, draft = self._draft_chapters(
                 request,
                 world,
@@ -218,6 +224,30 @@ class StoryPipeline:
         self.repository.save_json("request.json", request)
         self.repository.complete_stage("analysis")
 
+    def _build_blueprint(self, request: StoryRequest) -> NarrativeBlueprint | None:
+        """Propose optional structural inspiration without ever failing the run."""
+        assert self.repository is not None
+        if not self.narrative_guidance:
+            return None
+        self._notify(6, "architecture", "Eligiendo el esqueleto narrativo")
+
+        def build_blueprint():
+            """Read the bound request against the plot skeleton catalog."""
+            return StoryArchitectAgent(self.provider).run(request)
+
+        try:
+            blueprint = self._call_agent("architect", build_blueprint)
+        except NON_DEGRADABLE_ERRORS:
+            raise
+        except Exception:
+            warning = "No se pudo trazar el esqueleto narrativo; la historia continua sin esa guia."
+            self.repository.add_warning(warning)
+            self._emit("architecture_skipped", warning, stage="architecture")
+            return None
+        self.repository.save_json("narrative_blueprint.json", blueprint)
+        self.repository.complete_stage("architecture")
+        return blueprint
+
     def _build_world(self, request: StoryRequest) -> WorldArtifact:
         """Generate and persist the story world artifact."""
         assert self.repository is not None
@@ -236,6 +266,7 @@ class StoryPipeline:
         self,
         request: StoryRequest,
         world: WorldArtifact,
+        blueprint: NarrativeBlueprint | None = None,
     ) -> CharactersArtifact:
         """Generate and persist the story character artifact."""
         assert self.repository is not None
@@ -243,7 +274,7 @@ class StoryPipeline:
 
         def build_characters():
             """Generate characters for the bound request and world."""
-            return CharacterDesignerAgent(self.provider).run(request, world)
+            return CharacterDesignerAgent(self.provider).run(request, world, blueprint)
 
         characters = self._call_agent("characters", build_characters)
         self.repository.save_json("characters.json", characters)
@@ -255,6 +286,7 @@ class StoryPipeline:
         request: StoryRequest,
         world: WorldArtifact,
         characters: CharactersArtifact,
+        blueprint: NarrativeBlueprint | None = None,
     ) -> StoryPlan:
         """Generate, validate, critique, and optionally refine the story plan."""
         assert self.repository is not None
@@ -271,6 +303,7 @@ class StoryPipeline:
                     world,
                     characters,
                     feedback_snapshot,
+                    blueprint=blueprint,
                 )
 
             draft = self._call_agent(
@@ -292,7 +325,7 @@ class StoryPipeline:
                 recommendations=["Revisa los intentos guardados bajo planning/."],
             )
         self.repository.complete_stage("planning")
-        plan = self._critique_plan(request, world, characters, plan)
+        plan = self._critique_plan(request, world, characters, plan, blueprint)
         self.repository.save_json("story_plan.json", plan)
         return plan
 
@@ -302,6 +335,7 @@ class StoryPipeline:
         world: WorldArtifact,
         characters: CharactersArtifact,
         original_plan: StoryPlan,
+        blueprint: NarrativeBlueprint | None = None,
     ) -> StoryPlan:
         """Apply one bounded plan-critique round without risking a valid plan."""
         assert self.repository is not None
@@ -331,6 +365,7 @@ class StoryPipeline:
                     world,
                     characters,
                     plan_review=review,
+                    blueprint=blueprint,
                 )
 
             candidate = self._call_agent("plot_planner", refine_plan)

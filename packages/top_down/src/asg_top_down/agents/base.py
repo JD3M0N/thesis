@@ -8,7 +8,8 @@ from pydantic import BaseModel
 
 from ..profiles import profile_guidance
 from ..provider import LanguageModelProvider
-from ..schemas import StoryRequest
+from ..schemas import NarrativeBlueprint, StoryRequest
+from ..skeletons import blueprint_guidance
 
 T = TypeVar("T")
 
@@ -29,12 +30,18 @@ def json_text(value: Any) -> str:
     return json.dumps(convert(value), ensure_ascii=False, indent=2)
 
 
-def story_specification_header(request: StoryRequest) -> str:
+def story_specification_header(
+    request: StoryRequest,
+    blueprint: NarrativeBlueprint | None = None,
+) -> str:
     """Return the shared STORY SPECIFICATION + NARRATIVE PROFILE CONTRACT header."""
-    return (
+    header = (
         f"STORY SPECIFICATION:\n{json_text(request.agent_spec())}"
         f"\n\nNARRATIVE PROFILE CONTRACT:\n{profile_guidance(request.narrative_profile)}"
     )
+    if blueprint is None:
+        return header
+    return f"{header}\n\n{blueprint_guidance(blueprint)}"
 
 
 class Agent(ABC, Generic[T]):
